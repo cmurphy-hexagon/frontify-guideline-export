@@ -2,6 +2,10 @@
 
 Exports all content from a Frontify Brand Guideline into organized Markdown files for use as LLM context.
 
+The file naming is pretty bad and legibility relies on the semantics of the targetted brand's navigation.
+
+This project contains two scripts - I dumped the readme for the second script below this one - I'm tired and want to move on to something else
+
 ## Usage
 
 ```bash
