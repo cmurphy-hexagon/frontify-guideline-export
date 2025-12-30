@@ -279,26 +279,39 @@ function sanitizeFilename(str) {
     .substring(0, 100);
 }
 
-// Group pages by their URL path structure, preserving order
-function groupPagesBySection(pages) {
-  const groups = {};
-  const sectionOrder = []; // Track order sections are first seen
+// Group pages by document ID and section, preserving order
+function groupPages(pages) {
+  const documents = {};
+  const documentOrder = []; // Track order documents are first seen
   
   for (const page of pages) {
-    // Extract section from URL path
-    // e.g., https://weare.frontify.com/document/3291#/appbridgetheme/commands
-    // -> section = "appbridgetheme"
-    const urlMatch = page.url?.match(/#\/([^/]+)/);
-    const section = urlMatch ? urlMatch[1] : 'general';
+    // Extract document ID from URL (e.g., /document/2582#/...)
+    const docMatch = page.url?.match(/\/document\/(\d+)/);
+    const docId = docMatch ? docMatch[1] : 'root';
     
-    if (!groups[section]) {
-      groups[section] = [];
-      sectionOrder.push(section); // Track when we first see this section
+    // Extract section from URL path (e.g., #/tutorials/overview -> tutorials)
+    const sectionMatch = page.url?.match(/#\/([^/]+)/);
+    const section = sectionMatch ? sectionMatch[1] : 'general';
+    
+    // Initialize document group if needed
+    if (!documents[docId]) {
+      documents[docId] = {
+        sections: {},
+        sectionOrder: []
+      };
+      documentOrder.push(docId);
     }
-    groups[section].push(page);
+    
+    // Initialize section within document if needed
+    if (!documents[docId].sections[section]) {
+      documents[docId].sections[section] = [];
+      documents[docId].sectionOrder.push(section);
+    }
+    
+    documents[docId].sections[section].push(page);
   }
   
-  return { groups, sectionOrder };
+  return { documents, documentOrder };
 }
 
 // Main export function
@@ -320,85 +333,104 @@ async function exportGuideline(domain, token, guidelineId, outputName) {
   console.log(`   URL: ${guidelineInfo.url}`);
   console.log(`   Total pages: ${pages.length}\n`);
   
-  // Group pages by section
-  const { groups: groupedPages, sectionOrder } = groupPagesBySection(pages);
+  // Group pages by document and section
+  const { documents, documentOrder } = groupPages(pages);
   
-  console.log(`📁 Found ${sectionOrder.length} sections: ${sectionOrder.join(', ')}\n`);
+  console.log(`📁 Found ${documentOrder.length} documents: ${documentOrder.join(', ')}\n`);
   
-  // Process each section in order
-  for (let i = 0; i < sectionOrder.length; i++) {
-    const sectionName = sectionOrder[i];
-    const sectionPages = groupedPages[sectionName];
-    const sectionNum = String(i + 1).padStart(2, '0'); // 01, 02, 03...
+  // Process each document
+  for (const docId of documentOrder) {
+    const doc = documents[docId];
     
-    console.log(`\nProcessing section ${sectionNum}: ${sectionName} (${sectionPages.length} pages)`);
-    
-    let sectionMarkdown = `# ${guidelineInfo.name} - ${sectionName}\n\n`;
-    sectionMarkdown += `Guideline URL: ${guidelineInfo.url}\n\n`;
-    sectionMarkdown += `---\n\n`;
-    
-    let processedCount = 0;
-    
-    for (const page of sectionPages) {
-      process.stdout.write(`  Fetching: ${page.title}... `);
-      
-      try {
-        const pageContent = await fetchPageContent(
-          domain,
-          token, 
-          page.id, 
-          guidelineInfo.defaultLanguage?.code
-        );
-        
-        if (pageContent) {
-          sectionMarkdown += pageToMarkdown(pageContent);
-          sectionMarkdown += `---\n\n`;
-          processedCount++;
-          console.log('✓');
-        } else {
-          console.log('⚠ (skipped)');
-        }
-      } catch (err) {
-        console.log(`✗ (${err.message})`);
-      }
-      
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
+    // Create document folder
+    const docFolder = path.join(fullOutputDir, docId);
+    if (!fs.existsSync(docFolder)) {
+      fs.mkdirSync(docFolder, { recursive: true });
     }
     
-    // Write section file with numbered prefix
-    const filename = `${sectionNum}-${sanitizeFilename(sectionName)}.md`;
-    const filepath = path.join(fullOutputDir, filename);
-    fs.writeFileSync(filepath, sectionMarkdown);
+    console.log(`\n📄 Document: ${docId}`);
     
-    console.log(`  ✓ Wrote ${filename} (${processedCount} pages)`);
+    // Process each section within this document
+    for (let i = 0; i < doc.sectionOrder.length; i++) {
+      const sectionName = doc.sectionOrder[i];
+      const sectionPages = doc.sections[sectionName];
+      const sectionNum = String(i + 1).padStart(2, '0');
+      
+      console.log(`  Processing section ${sectionNum}: ${sectionName} (${sectionPages.length} pages)`);
+      
+      let sectionMarkdown = `# ${guidelineInfo.name} - ${sectionName}\n\n`;
+      sectionMarkdown += `Document: ${docId}\n`;
+      sectionMarkdown += `Guideline URL: ${guidelineInfo.url}\n\n`;
+      sectionMarkdown += `---\n\n`;
+      
+      let processedCount = 0;
+      
+      for (const page of sectionPages) {
+        process.stdout.write(`    Fetching: ${page.title}... `);
+        
+        try {
+          const pageContent = await fetchPageContent(
+            domain,
+            token, 
+            page.id, 
+            guidelineInfo.defaultLanguage?.code
+          );
+          
+          if (pageContent) {
+            sectionMarkdown += pageToMarkdown(pageContent);
+            sectionMarkdown += `---\n\n`;
+            processedCount++;
+            console.log('✓');
+          } else {
+            console.log('⚠ (skipped)');
+          }
+        } catch (err) {
+          console.log(`✗ (${err.message})`);
+        }
+        
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Write section file with numbered prefix
+      const filename = `${sectionNum}-${sanitizeFilename(sectionName)}.md`;
+      const filepath = path.join(docFolder, filename);
+      fs.writeFileSync(filepath, sectionMarkdown);
+      
+      console.log(`    ✓ Wrote ${docId}/${filename} (${processedCount} pages)`);
+    }
   }
   
   // Write index file
-  const indexMarkdown = generateIndex(guidelineInfo, groupedPages, sectionOrder);
+  const indexMarkdown = generateIndex(guidelineInfo, documents, documentOrder);
   fs.writeFileSync(path.join(fullOutputDir, '00-INDEX.md'), indexMarkdown);
   
   console.log(`\n✅ Export complete! Files written to: ${fullOutputDir}\n`);
 }
 
 // Generate index file
-function generateIndex(guidelineInfo, groupedPages, sectionOrder) {
+function generateIndex(guidelineInfo, documents, documentOrder) {
   let md = `# ${guidelineInfo.name} - Export Index\n\n`;
   md += `Exported from: ${guidelineInfo.url}\n\n`;
-  md += `## Sections\n\n`;
+  md += `## Documents\n\n`;
   
-  for (let i = 0; i < sectionOrder.length; i++) {
-    const sectionName = sectionOrder[i];
-    const pages = groupedPages[sectionName];
-    const sectionNum = String(i + 1).padStart(2, '0');
-    const filename = `${sectionNum}-${sanitizeFilename(sectionName)}.md`;
+  for (const docId of documentOrder) {
+    const doc = documents[docId];
+    md += `### 📄 [${docId}](./${docId}/)\n\n`;
     
-    md += `### ${sectionNum}. [${sectionName}](./${filename})\n\n`;
-    
-    for (const page of pages) {
-      md += `- ${page.title}\n`;
+    for (let i = 0; i < doc.sectionOrder.length; i++) {
+      const sectionName = doc.sectionOrder[i];
+      const pages = doc.sections[sectionName];
+      const sectionNum = String(i + 1).padStart(2, '0');
+      const filename = `${sectionNum}-${sanitizeFilename(sectionName)}.md`;
+      
+      md += `#### ${sectionNum}. [${sectionName}](./${docId}/${filename})\n\n`;
+      
+      for (const page of pages) {
+        md += `- ${page.title}\n`;
+      }
+      md += '\n';
     }
-    md += '\n';
   }
   
   return md;
