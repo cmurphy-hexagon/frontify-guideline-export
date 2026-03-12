@@ -22,18 +22,21 @@ function parseArgs() {
     } else if (args[i] === '--domain' && args[i + 1]) {
       parsed.domain = args[i + 1];
       i++;
+    } else if (args[i] === '--combine') {
+      parsed.combine = true;
     } else if (args[i] === '--help' || args[i] === '-h') {
       console.log(`
 Frontify Guideline Export Tool
 
 Usage:
-  node export-guideline.js --token <TOKEN> --guideline <GUIDELINE_ID> --domain <DOMAIN> --output <NAME>
+  node export-guideline.js --token <TOKEN> --guideline <GUIDELINE_ID> --domain <DOMAIN> --output <NAME> [--combine]
 
 Options:
-  --token      Your Frontify API bearer token (required)
+  --token      Your Frontify API bearer token (or set FRONTIFY_TOKEN env var)
   --guideline  The guideline ID to export (required)
   --domain     Your Frontify domain, e.g. "weare.frontify.com" (required)
   --output     Name of the output subfolder in ./output/ (required)
+  --combine    Also write a single combined.md file (useful for AI skills)
   --help       Show this help message
 
 Example:
@@ -44,9 +47,14 @@ Example:
       process.exit(0);
     }
   }
-  
+
+  // Fall back to environment variable if token not provided via CLI
+  if (!parsed.token && process.env.FRONTIFY_TOKEN) {
+    parsed.token = process.env.FRONTIFY_TOKEN;
+  }
+
   if (!parsed.token) {
-    console.error('Error: --token is required');
+    console.error('Error: --token is required (or set the FRONTIFY_TOKEN environment variable)');
     process.exit(1);
   }
   if (!parsed.guidelineId) {
@@ -302,7 +310,7 @@ function groupPagesBySection(pages) {
 }
 
 // Main export function
-async function exportGuideline(domain, token, guidelineId, outputName) {
+async function exportGuideline(domain, token, guidelineId, outputName, combine = false) {
   console.log('\n🚀 Starting Frontify Guideline Export\n');
   console.log(`   Domain: ${domain}\n`);
   
@@ -326,6 +334,8 @@ async function exportGuideline(domain, token, guidelineId, outputName) {
   console.log(`📁 Found ${sectionOrder.length} sections: ${sectionOrder.join(', ')}\n`);
   
   // Process each section in order
+  const sectionFiles = [];
+
   for (let i = 0; i < sectionOrder.length; i++) {
     const sectionName = sectionOrder[i];
     const sectionPages = groupedPages[sectionName];
@@ -370,6 +380,7 @@ async function exportGuideline(domain, token, guidelineId, outputName) {
     const filename = `${sectionNum}-${sanitizeFilename(sectionName)}.md`;
     const filepath = path.join(fullOutputDir, filename);
     fs.writeFileSync(filepath, sectionMarkdown);
+    sectionFiles.push({ filename, markdown: sectionMarkdown });
     
     console.log(`  ✓ Wrote ${filename} (${processedCount} pages)`);
   }
@@ -377,6 +388,17 @@ async function exportGuideline(domain, token, guidelineId, outputName) {
   // Write index file
   const indexMarkdown = generateIndex(guidelineInfo, groupedPages, sectionOrder);
   fs.writeFileSync(path.join(fullOutputDir, '00-INDEX.md'), indexMarkdown);
+
+  // Write combined file if requested (ideal for loading as a single AI skill context)
+  if (combine) {
+    let combinedMarkdown = indexMarkdown + '\n---\n\n';
+    for (const { markdown } of sectionFiles) {
+      combinedMarkdown += markdown;
+    }
+    const combinedPath = path.join(fullOutputDir, 'combined.md');
+    fs.writeFileSync(combinedPath, combinedMarkdown);
+    console.log(`  ✓ Wrote combined.md (single file for AI skill use)`);
+  }
   
   console.log(`\n✅ Export complete! Files written to: ${fullOutputDir}\n`);
 }
@@ -406,7 +428,7 @@ function generateIndex(guidelineInfo, groupedPages, sectionOrder) {
 
 // Run
 const args = parseArgs();
-exportGuideline(args.domain, args.token, args.guidelineId, args.outputName)
+exportGuideline(args.domain, args.token, args.guidelineId, args.outputName, args.combine)
   .catch(err => {
     console.error('\n❌ Export failed:', err.message);
     process.exit(1);
