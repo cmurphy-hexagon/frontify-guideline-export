@@ -30,7 +30,7 @@ Usage:
   node export-guideline.js --token <TOKEN> --guideline <GUIDELINE_ID> --domain <DOMAIN> --output <NAME>
 
 Options:
-  --token      Your Frontify API bearer token (required)
+  --token      Your Frontify API bearer token (or set FRONTIFY_TOKEN env var)
   --guideline  The guideline ID to export (required)
   --domain     Your Frontify domain, e.g. "weare.frontify.com" (required)
   --output     Name of the output subfolder in ./output/ (required)
@@ -44,9 +44,14 @@ Example:
       process.exit(0);
     }
   }
-  
+
+  // Fall back to environment variable if token not provided via CLI
+  if (!parsed.token && process.env.FRONTIFY_TOKEN) {
+    parsed.token = process.env.FRONTIFY_TOKEN;
+  }
+
   if (!parsed.token) {
-    console.error('Error: --token is required');
+    console.error('Error: --token is required (or set the FRONTIFY_TOKEN environment variable)');
     process.exit(1);
   }
   if (!parsed.guidelineId) {
