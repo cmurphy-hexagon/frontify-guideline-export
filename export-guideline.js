@@ -17,6 +17,10 @@ function parsePositiveInt(value, flagName) {
   return parsed;
 }
 
+function guidelineIdFromN(n) {
+  return Buffer.from(JSON.stringify({ identifier: n, type: 'guideline' })).toString('base64');
+}
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const parsed = {
@@ -33,6 +37,12 @@ function parseArgs() {
       i++;
     } else if (args[i] === '--guideline' && args[i + 1]) {
       parsed.guidelineId = args[i + 1];
+      i++;
+    } else if (args[i] === '--guideline-n' && args[i + 1]) {
+      parsed.guidelineN = parsePositiveInt(args[i + 1], '--guideline-n');
+      i++;
+    } else if (args[i] === '--guideline-name' && args[i + 1]) {
+      parsed.guidelineName = args[i + 1];
       i++;
     } else if (args[i] === '--output' && args[i + 1]) {
       parsed.outputName = args[i + 1];
@@ -73,8 +83,8 @@ function parseArgs() {
   if (!parsed.token) {
     exitWithError('Error: --token is required (or set FRONTIFY_TOKEN environment variable).');
   }
-  if (!parsed.guidelineId) {
-    exitWithError('Error: --guideline is required.');
+  if (!parsed.guidelineId && parsed.guidelineN === undefined && !parsed.guidelineName) {
+    exitWithError('Error: specify one of --guideline <ID>, --guideline-n <N>, or --guideline-name "<name>".');
   }
   if (!parsed.domain) {
     exitWithError('Error: --domain is required (for example: weare.frontify.com).');
@@ -102,11 +112,15 @@ function printHelp() {
 Frontify Guideline Export Tool
 
 Usage:
-  node export-guideline.js --token <TOKEN> --guideline <GUIDELINE_ID> --domain <DOMAIN> --output <NAME> [--structure <flat|by-document>] [--output-mode <split|combined|both>] [--probe] [--skip-download] [--dry-run] [--max-libraries <N>] [--max-assets-per-library <N>]
+  node export-guideline.js (--guideline <ID> | --guideline-n <N> | --guideline-name "<name>") --domain <DOMAIN> --output <NAME> [--token <TOKEN>] [--structure <flat|by-document>] [--output-mode <split|combined|both>] [--probe] [--skip-download] [--dry-run] [--max-libraries <N>] [--max-assets-per-library <N>]
+
+Guideline selection (one required):
+  --guideline      Full base64 node ID (explicit override)
+  --guideline-n    Numeric identifier N; constructs the base64 ID for you
+  --guideline-name Guideline name; searches identifiers 1–200 to find it
 
 Options:
   --token        Frontify API bearer token (or set FRONTIFY_TOKEN env var)
-  --guideline    Guideline ID to export (required)
   --domain       Frontify domain, for example "weare.frontify.com" (required)
   --output       Output subfolder name under ./output/ (required)
   --structure    Output organization: flat or by-document (default: flat)
@@ -120,8 +134,8 @@ Options:
   --help         Show this help message
 
 Examples:
-  node export-guideline.js --guideline <ID> --domain brand.octave.com --output octave-flat
-  node export-guideline.js --guideline <ID> --domain brand.octave.com --output octave-docs --structure by-document
+  node export-guideline.js --guideline-n 6 --domain brand.octave.com --output octave-flat
+  node export-guideline.js --guideline-name "Octave" --domain brand.octave.com --output octave-docs --structure by-document
   node export-guideline.js --guideline <ID> --domain brand.octave.com --output octave-ai --structure by-document --output-mode both --probe
 `);
 }
@@ -139,6 +153,56 @@ async function probeGraphQLEndpoint(domain, token) {
     throw new Error('Probe succeeded but __typename was missing in response data.');
   }
   console.log(`GraphQL probe succeeded (root type: ${typename})\n`);
+}
+
+async function fetchGuidelineName(domain, token, n) {
+  const id = guidelineIdFromN(n);
+  const query = `
+    query GuidelineName($id: ID!) {
+      node(id: $id) {
+        ... on Guideline {
+          name
+        }
+      }
+    }
+  `;
+  try {
+    const data = await graphqlRequest(domain, token, query, { id });
+    const name = data && data.node && data.node.name;
+    return name ? { n, id, name } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveGuidelineIdByName(domain, token, targetName) {
+  const MAX_N = 200;
+  const MAX_CONSECUTIVE_NULLS = 20;
+  const normalizedTarget = targetName.trim().toLowerCase();
+  const found = [];
+  let consecutiveNulls = 0;
+
+  console.log(`Searching for guideline named "${targetName}"...\n`);
+
+  for (let n = 1; n <= MAX_N; n++) {
+    const result = await fetchGuidelineName(domain, token, n);
+    if (result) {
+      consecutiveNulls = 0;
+      found.push(result);
+      if (result.name.trim().toLowerCase() === normalizedTarget) {
+        console.log(`Found: "${result.name}" (identifier=${n})\n`);
+        return result.id;
+      }
+    } else {
+      consecutiveNulls++;
+      if (consecutiveNulls >= MAX_CONSECUTIVE_NULLS) break;
+    }
+  }
+
+  const foundList = found.length
+    ? `\nGuidelines found during search:\n${found.map((r) => `  ${r.n}: "${r.name}"`).join('\n')}`
+    : '\nNo guidelines were found during search.';
+  exitWithError(`Error: No guideline named "${targetName}" found.${foundList}`);
 }
 
 async function graphqlRequest(domain, token, query, variables = {}) {
@@ -616,7 +680,9 @@ async function exportGuideline(config) {
   const {
     domain,
     token,
-    guidelineId,
+    guidelineId: rawGuidelineId,
+    guidelineN,
+    guidelineName,
     outputName,
     structure,
     outputMode,
@@ -647,6 +713,13 @@ async function exportGuideline(config) {
 
   if (probe) {
     await probeGraphQLEndpoint(domain, token);
+  }
+
+  let guidelineId = rawGuidelineId;
+  if (!guidelineId && guidelineN !== undefined) {
+    guidelineId = guidelineIdFromN(guidelineN);
+  } else if (!guidelineId) {
+    guidelineId = await resolveGuidelineIdByName(domain, token, guidelineName);
   }
 
   const { guidelineInfo, libraries: bareLibraries } = await fetchGuidelineLibraries(

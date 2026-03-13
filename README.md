@@ -13,7 +13,7 @@ Exports Frontify guideline library content and assets into Markdown plus downloa
 
 - Node.js 18+
 - Frontify API bearer token
-- Guideline ID (base64 ID)
+- A way to identify the guideline: its numeric identifier (`--guideline-n`), its name (`--guideline-name`), or the raw base64 ID (`--guideline`)
 
 Set your token as an environment variable:
 
@@ -31,7 +31,7 @@ $env:FRONTIFY_TOKEN = "your-token"
 
 ```bash
 node export-guideline.js \
-  --guideline <GUIDELINE_ID> \
+  (--guideline-n <N> | --guideline-name "<name>" | --guideline <ID>) \
   --domain <DOMAIN> \
   --output <NAME> \
   [--token <TOKEN>] \
@@ -46,7 +46,9 @@ node export-guideline.js \
 
 ## Options
 
-- `--guideline` Required. Guideline node ID.
+- `--guideline-n` Numeric identifier only (e.g. `6`); constructs the base64 ID automatically. _(one of the three is required)_
+- `--guideline-name` Guideline display name (e.g. `"Octave"`); enumerates identifiers 1–200 to locate it. _(one of the three is required)_
+- `--guideline` Full base64 node ID, for explicit overrides or CI pipelines. _(one of the three is required)_
 - `--domain` Required. Frontify domain, for example `brand.octave.com`.
 - `--output` Required. Output folder name under `./output/`.
 - `--token` Optional if `FRONTIFY_TOKEN` is set.
@@ -63,7 +65,7 @@ node export-guideline.js \
 
 ```bash
 node export-guideline.js \
-  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --guideline-n 6 \
   --domain "brand.octave.com" \
   --output "octave-full" \
   --structure flat \
@@ -73,7 +75,7 @@ node export-guideline.js \
 
 ```bash
 node export-guideline.js \
-  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --guideline-name "Octave" \
   --domain "brand.octave.com" \
   --output "octave-metadata" \
   --output-mode combined \
@@ -82,7 +84,7 @@ node export-guideline.js \
 
 ```bash
 node export-guideline.js \
-  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --guideline-n 6 \
   --domain "brand.octave.com" \
   --output "octave-dryrun" \
   --dry-run \
@@ -91,7 +93,7 @@ node export-guideline.js \
 
 ```bash
 node export-guideline.js \
-  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --guideline-n 6 \
   --domain "brand.octave.com" \
   --output "octave-smoke" \
   --probe \
