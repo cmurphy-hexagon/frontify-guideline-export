@@ -1,179 +1,140 @@
 # Frontify Guideline Export Tool
 
-Exports all content from a Frontify Brand Guideline into organized Markdown files, designed to be used as context for AI tools such as GitHub Copilot.
+Exports Frontify guideline library content and assets into Markdown plus downloaded files for AI and archival workflows.
 
-## Which Script Should I Use?
+## What it exports
 
-| Script | Output structure | Best for |
-|--------|-----------------|----------|
-| `export-guideline.js` ✅ **recommended** | Flat — one `.md` per section | Most guidelines; supports `--combine` for a single AI-ready file |
-| `export-guideline-2.js` | Hierarchical — sections nested under document-ID folders | Guidelines that span multiple Frontify documents |
-
-If you're not sure, start with `export-guideline.js`. The `--combine` flag it provides produces a single `combined.md` file that is ideal for loading as a GitHub Copilot AI skill.
-
----
+- Guideline metadata (`name`, `url`)
+- Library pages from `Guideline.libraryPages`
+- All assets from each library with pagination
+- Optional local downloads of each asset and its attachments
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) v12 or later (no additional packages required)
-- A Frontify API bearer token ([how to get one](https://developer.frontify.com/document/1006#/getting-started/authentication))
-- The Guideline ID you want to export (base64-encoded ID from the Frontify URL)
+- Node.js 18+
+- Frontify API bearer token
+- Guideline ID (base64 ID)
 
-### Setting your token (recommended)
-
-Store your token in an environment variable so it never appears in shell history or process listings:
+Set your token as an environment variable:
 
 ```bash
-export FRONTIFY_TOKEN="your-bearer-token"
+export FRONTIFY_TOKEN="your-token"
 ```
 
-You can also pass it with `--token` directly, but the environment variable approach is more secure.
+PowerShell:
 
----
+```powershell
+$env:FRONTIFY_TOKEN = "your-token"
+```
 
-## Usage — `export-guideline.js`
+## Usage
 
 ```bash
 node export-guideline.js \
   --guideline <GUIDELINE_ID> \
-  --domain    <DOMAIN> \
-  --output    <NAME> \
-  [--token    <TOKEN>] \
-  [--combine]
+  --domain <DOMAIN> \
+  --output <NAME> \
+  [--token <TOKEN>] \
+  [--structure <flat|by-document>] \
+  [--output-mode <split|combined|both>] \
+  [--probe] \
+  [--dry-run] \
+  [--skip-download] \
+  [--max-libraries <N>] \
+  [--max-assets-per-library <N>]
 ```
 
-### Options
+## Options
 
-| Option | Required | Description |
-|--------|----------|-------------|
-| `--guideline` | Yes | The guideline ID to export (base64-encoded ID from Frontify) |
-| `--domain` | Yes | Your Frontify domain (e.g. `weare.frontify.com`) |
-| `--output` | Yes | Name of the subfolder in `./output/` to store the export |
-| `--token` | No* | Frontify API bearer token (*use `FRONTIFY_TOKEN` env var instead) |
-| `--combine` | No | Also write a single `combined.md` for use as an AI skill |
-| `--help` | No | Show help message |
+- `--guideline` Required. Guideline node ID.
+- `--domain` Required. Frontify domain, for example `brand.octave.com`.
+- `--output` Required. Output folder name under `./output/`.
+- `--token` Optional if `FRONTIFY_TOKEN` is set.
+- `--structure` Optional. `flat` or `by-document` (default `flat`).
+- `--output-mode` Optional. `split`, `combined`, or `both` (default `split`).
+- `--combine` Alias for `--output-mode both`.
+- `--probe` Optional. Validates GraphQL endpoint/auth before export.
+- `--dry-run` Optional. Print a summary only (no files, no downloads).
+- `--skip-download` Optional. Export metadata markdown only.
+- `--max-libraries` Optional. Limit exported libraries (debug/smoke helper).
+- `--max-assets-per-library` Optional. Limit assets per library (debug/smoke helper).
 
-### Example
+## Examples
 
 ```bash
-# With token in environment variable (recommended)
-export FRONTIFY_TOKEN="your-bearer-token"
-
 node export-guideline.js \
-  --guideline "eyJpZGVudGlmaWVyIjozMjkxLCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
-  --domain    "weare.frontify.com" \
-  --output    "my-brand" \
-  --combine
+  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --domain "brand.octave.com" \
+  --output "octave-full" \
+  --structure flat \
+  --output-mode both \
+  --probe
 ```
-
----
-
-## Output Structure
-
-```
-output/
-└── my-brand/
-    ├── 00-INDEX.md           # Table of contents with links to all sections
-    ├── 01-getting-started.md # First section (in navigation order)
-    ├── 02-brand-voice.md     # Second section
-    ├── 03-visual-identity.md # Third section
-    └── combined.md           # Single file containing all sections (with --combine)
-```
-
-Each section file looks like this:
-
-```markdown
-# Brand Name - Section Name
-
-Guideline URL: https://...
-
----
-
-## Page Title
-
-URL: https://...
-
-### Heading
-
-Content here...
-
----
-
-## Next Page Title
-...
-```
-
----
-
-## Using the Output as a GitHub Copilot AI Skill
-
-The `--combine` flag produces a single `combined.md` file that contains your entire brand guideline. This is the easiest way to load the guidelines as context in GitHub Copilot.
-
-### Option 1 — GitHub Copilot Custom Instructions (simplest)
-
-1. Run the export with `--combine`
-2. Copy `combined.md` into your repository (e.g. `.github/brand-guidelines.md`)
-3. Reference it in `.github/copilot-instructions.md`:
-
-```markdown
-# Copilot Instructions
-
-When writing copy, code comments, or UI text, follow the brand guidelines in
-@.github/brand-guidelines.md
-```
-
-### Option 2 — GitHub Copilot Workspace Context
-
-Attach the relevant section file (or `combined.md`) directly in the Copilot Chat window using the **Attach context** button, or reference it with `#file:output/my-brand/combined.md` in a prompt.
-
-### Option 3 — Load specific sections per task
 
 ```bash
-# Review the index to find the relevant section
-cat output/my-brand/00-INDEX.md
-
-# Load a targeted section for a focused task
-cat output/my-brand/03-visual-identity.md
-# Then paste or attach it in your Copilot Chat
+node export-guideline.js \
+  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --domain "brand.octave.com" \
+  --output "octave-metadata" \
+  --output-mode combined \
+  --skip-download
 ```
-
----
-
-## Usage — `export-guideline-2.js`
-
-Use this script when your Frontify portal has multiple documents under one guideline. The output is nested by document ID.
 
 ```bash
-node export-guideline-2.js \
-  --guideline <GUIDELINE_ID> \
-  --domain    <DOMAIN> \
-  --output    <NAME> \
-  [--token    <TOKEN>]
+node export-guideline.js \
+  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --domain "brand.octave.com" \
+  --output "octave-dryrun" \
+  --dry-run \
+  --probe
 ```
 
-Options are the same as `export-guideline.js` except `--combine` is not available.
-
-### Output structure
-
+```bash
+node export-guideline.js \
+  --guideline "eyJpZGVudGlmaWVyIjo2LCJ0eXBlIjoiZ3VpZGVsaW5lIn0=" \
+  --domain "brand.octave.com" \
+  --output "octave-smoke" \
+  --probe \
+  --skip-download \
+  --max-libraries 1 \
+  --max-assets-per-library 5
 ```
+
+## Output layout
+
+Flat example:
+
+```text
 output/
-└── my-brand/
-    ├── 00-INDEX.md
-    ├── 2582/               # Document ID (from /document/2582 in the URL)
-    │   ├── 01-tutorials.md
-    │   └── 02-guides.md
-    ├── 3291/
-    │   ├── 01-building-a-theme.md
-    │   └── 02-commands.md
-    └── root/               # Pages that are not inside a specific document
-        └── 01-overview.md
+  octave-full/
+    00-INDEX.md
+    01-logo-library.md
+    02-icon-library.md
+    combined.md
+    assets/
+      logo-library/
+      icon-library/
+      ...
 ```
 
----
+By-document example:
+
+```text
+output/
+  octave-full/
+    00-INDEX.md
+    01-logo-library/
+      01-logo-library.md
+    02-icon-library/
+      02-icon-library.md
+    combined.md
+    assets/
+      ...
+```
 
 ## Notes
 
-- Both scripts handle pagination automatically (for pages and page sections)
-- A small delay (100ms) is added between API requests to avoid rate limiting
-- Pages are grouped by the first path segment in their URL hash (e.g. `#/getting-started/overview` → `getting-started`)
-- Content is exported as plain text from the Frontify API
+- The script uses Frontify GraphQL `libraryPages` and paginated `assets(page, limit)`.
+- Attachments are downloaded in addition to primary asset files.
+- Existing files are not overwritten; duplicate names are suffixed automatically.
+- If `--skip-download` is used, markdown still includes remote download URLs.
