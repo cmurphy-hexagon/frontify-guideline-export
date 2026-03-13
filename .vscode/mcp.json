@@ -1,0 +1,30 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "httpAuthBearerToken",
+      "description": "Bearer token for HTTP auth MCP server",
+      "password": true
+    },
+    {
+      "type": "promptString",
+      "id": "httpAuthAllowHosts",
+      "description": "Comma-separated host allowlist (for example: weare.frontify.com,api.frontify.com)",
+      "password": false
+    }
+  ],
+  "servers": {
+    "httpAuth": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/../http-client-mcp-server/mcp-http-auth-server.js"],
+      "env": {
+        "MCP_AUTH_BEARER_TOKEN": "${input:httpAuthBearerToken}",
+        "MCP_AUTH_ALLOW_HOSTS": "${input:httpAuthAllowHosts}",
+        "MCP_AUTH_REQUIRE_ALLOW_HOSTS": "true",
+        "MCP_AUTH_TIMEOUT_MS": "20000",
+        "MCP_AUTH_MAX_BODY_CHARS": "12000"
+      }
+    }
+  }
+}
