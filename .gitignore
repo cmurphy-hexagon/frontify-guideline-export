@@ -1,2 +1,5 @@
 # Export output
 output/
+
+# Node dependencies
+node_modules/
