@@ -11,6 +11,11 @@
     "export:flat:both": "node export-guideline.js --structure flat --output-mode both",
     "export:docs": "node export-guideline.js --structure by-document --output-mode split",
     "export:docs:combined": "node export-guideline.js --structure by-document --output-mode combined",
-    "export:docs:both": "node export-guideline.js --structure by-document --output-mode both"
+    "export:docs:both": "node export-guideline.js --structure by-document --output-mode both",
+    "pages:crawl": "node export-pages.js",
+    "pages:crawl:dry-run": "node export-pages.js --dry-run"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0"
   }
 }
