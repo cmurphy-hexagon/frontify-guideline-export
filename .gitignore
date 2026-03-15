@@ -1,5 +1,11 @@
 # Export output
 output/
 
+# Log files
+log/
+
 # Node dependencies
 node_modules/
+
+# Session files
+frontify-session.json
