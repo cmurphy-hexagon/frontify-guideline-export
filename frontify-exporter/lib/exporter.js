@@ -226,7 +226,25 @@ function printDryRunSummary(guidelineInfo, libraries, maxAssetsPerLibrary) {
   console.log('');
 }
 
-async function downloadLibraryAssets(library, assetsRootDir) {
+function normalizeLibraryTypeFilter(value) {
+  const v = String(value || '').trim().toLowerCase();
+  const aliases = {
+    logo: 'logo_library',
+    logos: 'logo_library',
+    icon: 'icon_library',
+    icons: 'icon_library',
+    photo: 'media_library',
+    photos: 'media_library',
+    media: 'media_library',
+    template: 'document_library',
+    templates: 'document_library',
+    document: 'document_library',
+    documents: 'document_library',
+  };
+  return aliases[v] || v;
+}
+
+async function downloadLibraryAssets(library, assetsRootDir, skipExistingAsset = false) {
   const safeLibrary = sanitizeFilename(library.title);
   const libraryFolder = path.join(assetsRootDir, safeLibrary);
   fs.mkdirSync(libraryFolder, { recursive: true });
@@ -234,6 +252,7 @@ async function downloadLibraryAssets(library, assetsRootDir) {
   const takenPaths = new Set();
   let success = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const asset of library.assets) {
     const assetFolder = path.join(libraryFolder, sanitizeFilename(asset.title || asset.id));
@@ -245,7 +264,20 @@ async function downloadLibraryAssets(library, assetsRootDir) {
     for (const file of files) {
       const safeName = sanitizeFilename(path.parse(file.filename).name);
       const ext = path.extname(file.filename) || (asset.extension ? `.${asset.extension}` : '.bin');
-      const targetPath = ensureUniquePath(path.join(assetFolder, `${safeName}${ext}`), takenPaths);
+      const preferredPath = path.join(assetFolder, `${safeName}${ext}`);
+      if (skipExistingAsset && fs.existsSync(preferredPath)) {
+        const stat = fs.statSync(preferredPath);
+        asset.localFiles.push({
+          kind: file.kind,
+          relativePath: path.relative(assetsRootDir, preferredPath),
+          size: stat.size
+        });
+        skipped++;
+        takenPaths.add(preferredPath);
+        continue;
+      }
+
+      const targetPath = ensureUniquePath(preferredPath, takenPaths);
       try {
         await downloadToFile(file.url, targetPath);
         const stat = fs.statSync(targetPath);
@@ -262,7 +294,7 @@ async function downloadLibraryAssets(library, assetsRootDir) {
     }
   }
 
-  return { success, failed };
+  return { success, failed, skipped };
 }
 
 async function exportGuideline(config) {
@@ -277,9 +309,12 @@ async function exportGuideline(config) {
     outputMode,
     probe,
     skipDownload,
+    skipExistingAsset = false,
     dryRun,
     maxLibraries,
-    maxAssetsPerLibrary
+    maxAssetsPerLibrary,
+    assetTypes = [],
+    libraryTypes = []
   } = config;
 
   console.log('\nStarting Frontify Guideline Export\n');
@@ -296,7 +331,13 @@ async function exportGuideline(config) {
   if (maxAssetsPerLibrary) {
     console.log(`  Max assets per library: ${maxAssetsPerLibrary}`);
   }
-  if (maxLibraries || maxAssetsPerLibrary) {
+  if (assetTypes.length > 0) {
+    console.log(`  Asset type filter: ${assetTypes.join(', ')}`);
+  }
+  if (libraryTypes.length > 0) {
+    console.log(`  Library type filter: ${libraryTypes.join(', ')}`);
+  }
+  if (maxLibraries || maxAssetsPerLibrary || assetTypes.length > 0 || libraryTypes.length > 0) {
     console.log('');
   }
 
@@ -311,12 +352,21 @@ async function exportGuideline(config) {
     guidelineId = await resolveGuidelineIdByName(domain, token, guidelineName);
   }
 
-  const { guidelineInfo, libraries: bareLibraries } = await fetchGuidelineLibraries(
+  const { guidelineInfo, libraries: allLibraries } = await fetchGuidelineLibraries(
     domain,
     token,
     guidelineId,
     maxLibraries
   );
+
+  const normalizedLibraryFilters = libraryTypes.map(normalizeLibraryTypeFilter);
+  const bareLibraries = normalizedLibraryFilters.length === 0
+    ? allLibraries
+    : allLibraries.filter((lib) => {
+      const type = String(lib.type || '').toLowerCase();
+      const title = String(lib.title || '').toLowerCase();
+      return normalizedLibraryFilters.some((f) => type === f || type.includes(f) || title.includes(f));
+    });
 
   if (dryRun) {
     printDryRunSummary(guidelineInfo, bareLibraries, maxAssetsPerLibrary);
@@ -334,12 +384,24 @@ async function exportGuideline(config) {
     const num = String(i + 1).padStart(2, '0');
     process.stdout.write(`Fetching assets for library ${num}: ${base.title}... `);
     const { assets } = await fetchLibraryAssets(domain, token, base.id, maxAssetsPerLibrary);
+    const filteredAssets = assetTypes.length === 0
+      ? assets
+      : assets.filter((asset) => {
+        const candidateTypes = [asset.__typename, asset.type]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase());
+        return candidateTypes.some((t) => assetTypes.includes(t));
+      });
     libraries.push({
       ...base,
-      assets,
+      assets: filteredAssets,
       folderName: `${num}-${sanitizeFilename(base.title)}`
     });
-    console.log(`${assets.length} assets`);
+    if (assetTypes.length > 0) {
+      console.log(`${filteredAssets.length}/${assets.length} assets kept`);
+    } else {
+      console.log(`${filteredAssets.length} assets`);
+    }
   }
 
   const fullOutputDir = path.join('./output', outputName);
@@ -357,10 +419,10 @@ async function exportGuideline(config) {
     console.log('\nDownloading assets...');
     for (const library of libraries) {
       process.stdout.write(`  ${library.title}... `);
-      const stats = await downloadLibraryAssets(library, assetsRootDir);
+      const stats = await downloadLibraryAssets(library, assetsRootDir, skipExistingAsset);
       totalDownloadSuccess += stats.success;
       totalDownloadFailed += stats.failed;
-      console.log(`ok (${stats.success} files, ${stats.failed} failed)`);
+      console.log(`ok (${stats.success} files, ${stats.skipped} skipped, ${stats.failed} failed)`);
     }
   }
 

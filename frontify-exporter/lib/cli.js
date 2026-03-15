@@ -15,7 +15,7 @@ function printHelp() {
 Frontify Guideline Export Tool
 
 Usage:
-  node export-guideline.js (--guideline <ID> | --guideline-n <N> | --guideline-name "<name>") --domain <DOMAIN> --output <NAME> [--token <TOKEN>] [--structure <flat|by-document>] [--output-mode <split|combined|both>] [--probe] [--skip-download] [--dry-run] [--max-libraries <N>] [--max-assets-per-library <N>]
+  node export-guideline.js (--guideline <ID> | --guideline-n <N> | --guideline-name "<name>") --domain <DOMAIN> --output <NAME> [--token <TOKEN>] [--structure <flat|by-document>] [--output-mode <split|combined|both>] [--probe] [--skip-download] [--skip-existing-asset] [--dry-run] [--max-libraries <N>] [--max-assets-per-library <N>] [--asset-types <LIST>] [--library-types <LIST>]
 
 Guideline selection (one required):
   --guideline      Full base64 node ID (explicit override)
@@ -31,14 +31,22 @@ Options:
   --combine      Backward-compatible alias for --output-mode both
   --probe        Test GraphQL connectivity/auth first, then continue export
   --skip-download  Do not download asset files (metadata markdown only)
+  --skip-existing-asset  Skip downloading a file when its target path already exists
   --dry-run      Fetch summary only; do not write files or download assets
   --max-libraries  Limit number of libraries to export (debug helper)
   --max-assets-per-library  Limit assets fetched per library (debug helper)
+  --asset-types  Comma-separated asset types to keep (matches __typename or type),
+                 e.g. Image,Document or FILE. Repeatable.
+  --library-types  Comma-separated library filters, e.g. logo,template or
+                  LOGO_LIBRARY,DOCUMENT_LIBRARY. Repeatable.
   --help         Show this help message
 
 Examples:
   node export-guideline.js --guideline-n 6 --domain brand.octave.com --output octave-flat
   node export-guideline.js --guideline-name "Octave" --domain brand.octave.com --output octave-docs --structure by-document
+  node export-guideline.js --guideline-n 6 --domain brand.octave.com --output octave-images --asset-types Image
+  node export-guideline.js --guideline-n 6 --domain brand.octave.com --output octave-brand-assets --library-types logo,template
+  node export-guideline.js --guideline-n 6 --domain brand.octave.com --output octave-brand-assets --library-types logo,template --skip-existing-asset
   node export-guideline.js --guideline <ID> --domain brand.octave.com --output octave-ai --structure by-document --output-mode both --probe
 `);
 }
@@ -92,6 +100,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.probe = true;
     } else if (args[i] === '--skip-download') {
       parsed.skipDownload = true;
+    } else if (args[i] === '--skip-existing-asset') {
+      parsed.skipExistingAsset = true;
     } else if (args[i] === '--dry-run') {
       parsed.dryRun = true;
     } else if (args[i] === '--max-libraries') {
@@ -99,6 +109,28 @@ function parseArgs(argv = process.argv.slice(2)) {
       i++;
     } else if (args[i] === '--max-assets-per-library') {
       parsed.maxAssetsPerLibrary = parsePositiveInt(nextValueOrError(i, '--max-assets-per-library'), '--max-assets-per-library');
+      i++;
+    } else if (args[i] === '--asset-types') {
+      const raw = nextValueOrError(i, '--asset-types');
+      const values = String(raw)
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+      if (values.length === 0) {
+        exitWithError('Error: --asset-types requires at least one non-empty type.');
+      }
+      parsed.assetTypes = [...(parsed.assetTypes || []), ...values];
+      i++;
+    } else if (args[i] === '--library-types') {
+      const raw = nextValueOrError(i, '--library-types');
+      const values = String(raw)
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+      if (values.length === 0) {
+        exitWithError('Error: --library-types requires at least one non-empty type.');
+      }
+      parsed.libraryTypes = [...(parsed.libraryTypes || []), ...values];
       i++;
     } else if (args[i] === '--help' || args[i] === '-h') {
       printHelp();
@@ -153,6 +185,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     .replace(/^https?:\/\//, '')
     .replace(/\/graphql$/, '')
     .replace(/\/$/, '');
+
+  parsed.assetTypes = [...new Set((parsed.assetTypes || []).map((t) => String(t).trim().toLowerCase()).filter(Boolean))];
+  parsed.libraryTypes = [...new Set((parsed.libraryTypes || []).map((t) => String(t).trim().toLowerCase()).filter(Boolean))];
 
   return parsed;
 }
