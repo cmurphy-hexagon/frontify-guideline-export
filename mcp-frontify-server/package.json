@@ -1,0 +1,16 @@
+{
+  "name": "mcp-frontify-server",
+  "version": "1.0.0",
+  "description": "MCP server exposing Frontify guideline and asset tooling",
+  "type": "module",
+  "main": "mcp-frontify-server.js",
+  "scripts": {
+    "start": "node mcp-frontify-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
