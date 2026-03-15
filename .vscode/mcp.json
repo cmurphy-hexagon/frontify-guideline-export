@@ -11,9 +11,30 @@
       "id": "httpAuthAllowHosts",
       "description": "Comma-separated host allowlist (for example: weare.frontify.com,api.frontify.com)",
       "password": false
+    },
+    {
+      "type": "promptString",
+      "id": "frontifyToken",
+      "description": "Frontify bearer token",
+      "password": true
+    },
+    {
+      "type": "promptString",
+      "id": "frontifyDomain",
+      "description": "Frontify domain (e.g. brand.octave.com)",
+      "password": false
     }
   ],
   "servers": {
+    "frontify": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp-frontify-server/mcp-frontify-server.js"],
+      "env": {
+        "FRONTIFY_TOKEN": "${input:frontifyToken}",
+        "FRONTIFY_DOMAIN": "${input:frontifyDomain}"
+      }
+    },
     "httpAuth": {
       "type": "stdio",
       "command": "node",
